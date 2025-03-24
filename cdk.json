@@ -19,12 +19,13 @@
   "context": {
     "production": {
       "ResourceName": "ExampleComProduction",
-      "AlternateDomainNames": ["www.example.com"],
+      "AlternateDomainNames": ["www.example-20250324.com"],
       "CertificateArn": "",
       "OriginDomain": "ec2-xxx-xxx-xxx-xxx.ap-northeast-1.compute.amazonaws.com",
       "SettingBehaviors":[
         {
-          "pathPattern": "/test"
+          "pathPattern": "/test",
+          "cacheEnabled": true
         }
       ],
       "WhiteListIpSetArn": "",
@@ -40,17 +41,19 @@
         "AWSManagedRulesSQLiRuleSet"
       ],
       "LogBucket": "cloudfront-log-20250324",
-      "LogFilePrefix": "example.com",
-      "Description": "本番環境 www.example.com"
+      "LogFilePrefix": "example-20250324.com",
+      "LogRemoval": true,
+      "Description": "本番環境 www.example-20250324.com"
     },
     "staging": {
       "ResourceName": "ExampleComStaging",
-      "AlternateDomainNames": ["staging.example.com"],
+      "AlternateDomainNames": ["staging.example-20250324.com"],
       "CertificateArn": "",
       "OriginDomain": "ec2-xxx-xxx-xxx-xxx.ap-northeast-1.compute.amazonaws.com",
       "SettingBehaviors":[
         {
-          "pathPattern": "/test"
+          "pathPattern": "/test",
+          "cacheEnabled": true
         }
       ],
       "WhiteListIpSetArn": "",
@@ -66,8 +69,9 @@
         "AWSManagedRulesSQLiRuleSet"
       ],
       "LogBucket": "cloudfront-log-20250324",
-      "LogFilePrefix": "staging.example.com",
-      "Description": "開発環境 staging.example.com"
+      "LogFilePrefix": "staging.example-20250324.com",
+      "LogRemoval": true,
+      "Description": "開発環境 staging.example-20250324.com"
     },
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,

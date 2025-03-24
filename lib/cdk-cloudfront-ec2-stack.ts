@@ -1,4 +1,4 @@
-import { Stack, StackProps, CfnOutput, RemovalPolicy, Duration } from 'aws-cdk-lib';
+import { Stack, StackProps, CfnOutput, Duration, RemovalPolicy } from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
@@ -18,6 +18,7 @@ interface CdkStackProps extends StackProps {
   ManagedRules: string[];
   LogBucket: string;
   LogFilePrefix: string;
+  LogRemoval: boolean;
   Description: string;
 }
 
@@ -40,6 +41,7 @@ export class CdkCloudFrontEc2Stack extends Stack {
       ManagedRules,
       LogBucket,
       LogFilePrefix,
+      LogRemoval,
       Description,
     } = props as CdkStackProps;
 
@@ -96,20 +98,11 @@ export class CdkCloudFrontEc2Stack extends Stack {
     });
 
     // ✅ WAF ログ設定（CloudWatch Logs に出力）
-    const wafLogGroupName = `aws-waf-logs-${ResourceName}`;
-    let wafLogGroup: logs.ILogGroup;
-    try {
-      // ✅ 既存の LogGroup を参照
-      wafLogGroup = logs.LogGroup.fromLogGroupName(this, 'ExistingWafLogGroup', wafLogGroupName);
-      console.log(`✅ 既存の WAF LogGroup を利用: ${wafLogGroupName}`);
-    } catch {
-      // ✅ 存在しない場合は新規作成
-      wafLogGroup = new logs.LogGroup(this, 'WafLogGroup', {
-        logGroupName: wafLogGroupName,
-        removalPolicy: RemovalPolicy.RETAIN, // ✅ ログを保持
-      });
-      console.log(`✅ 新しい WAF LogGroup を作成: ${wafLogGroupName}`);
-    }
+    const wafLogGroup = new logs.LogGroup(this, 'WafLogGroup', {
+      logGroupName:  `aws-waf-logs-${ResourceName}`,
+      retention: logs.RetentionDays.FIVE_YEARS,
+      removalPolicy: LogRemoval ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+    });
 
     // ✅ WAF のロギング設定
     new wafv2.CfnLoggingConfiguration(this, 'WafLoggingConfig', {
@@ -140,9 +133,9 @@ export class CdkCloudFrontEc2Stack extends Stack {
             originShieldEnabled: true,
             originShieldRegion: 'ap-northeast-1',
           }),
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS, // HTTPリクエストをHTTPSにリダイレクト
+          viewerProtocolPolicy: CertificateArn ? cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS : cloudfront.ViewerProtocolPolicy.ALLOW_ALL, // HTTPリクエストをHTTPSにリダイレクト
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
-          cachePolicy: customCachePolicy, // キャッシュポリシー
+          cachePolicy: item.pathPattern ? customCachePolicy : cloudfront.CachePolicy.CACHING_DISABLED, // キャッシュポリシー
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022, // すべてのヘッダーをオリジンにリレー
           responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT, // ✅ CORS設定
         }
@@ -150,19 +143,12 @@ export class CdkCloudFrontEc2Stack extends Stack {
     );
 
     // ✅ S3 バケット名を定義
-    let logBucket: s3.IBucket;
-    try {
-      // ✅ 既存の S3 バケットを参照
-      logBucket = s3.Bucket.fromBucketName(this, 'ExistingLogBucket', LogBucket);
-    } catch {
-      // ✅ 存在しない場合は新規作成
-      logBucket = new s3.Bucket(this, 'LogBucket', {
-        bucketName: LogBucket,
-        removalPolicy: RemovalPolicy.RETAIN, // ✅ バケットを削除しない
-        autoDeleteObjects: false, // ✅ S3 バケットのオブジェクトも保持
-        accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE, // ✅ CloudFront のログ書き込みを許可
-      });
-    }
+    const logBucket = new s3.Bucket(this, 'LogBucket', {
+      bucketName: LogBucket,
+      autoDeleteObjects: false,
+      accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+      removalPolicy: LogRemoval ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+    });
 
     // ✅ CloudFrontディストリビューションの作成
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
@@ -172,13 +158,13 @@ export class CdkCloudFrontEc2Stack extends Stack {
           originShieldEnabled: true,
           originShieldRegion: 'ap-northeast-1',
         }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS, // ビューワーからのHTTPリクエストをHTTPSにリダイレクト
+        viewerProtocolPolicy: CertificateArn ? cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS : cloudfront.ViewerProtocolPolicy.ALLOW_ALL, // HTTPリクエストをHTTPSにリダイレクト
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
         cachePolicy: customCachePolicy, // キャッシュ最適化のためのポリシー
         originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022, // ビューワーからのすべてのヘッダーをオリジンにリレー
         responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT, // ✅ SimpleCORS を設定
       },
-      ...(behaviors.length > 0 &&
+      ...(SettingBehaviors.length > 0 &&
         { additionalBehaviors: behaviors } ),
       // WAFをアタッチ
       webAclId: webAcl.attrArn,
@@ -189,7 +175,7 @@ export class CdkCloudFrontEc2Stack extends Stack {
       // 有効
       enabled: true,
       // 代替ドメイン名（CNAME）を指定
-      ...(AlternateDomainNames?.[0] &&
+      ...((AlternateDomainNames?.[0] && CertificateArn) &&
         { domainNames: AlternateDomainNames }),
       // ACM証明書を指定
       ...(CertificateArn &&
