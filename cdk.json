@@ -27,7 +27,7 @@
           "pathPattern": "/test"
         }
       ],
-      "WhiteListIpSetArn": "arn:aws:wafv2:us-east-1:045294648983:global/ipset/WhiteList/70f40fe4-ddc4-4342-bc91-64fe6a1d9edd",
+      "WhiteListIpSetArn": "",
       "ManagedRules" : [
         "AWSManagedRulesAdminProtectionRuleSet",
         "AWSManagedRulesAmazonIpReputationList",
@@ -53,7 +53,7 @@
           "pathPattern": "/test"
         }
       ],
-      "WhiteListIpSetArn": "arn:aws:wafv2:us-east-1:045294648983:global/ipset/WhiteList/70f40fe4-ddc4-4342-bc91-64fe6a1d9edd",
+      "WhiteListIpSetArn": "",
       "ManagedRules" : [
         "AWSManagedRulesAdminProtectionRuleSet",
         "AWSManagedRulesAmazonIpReputationList",
