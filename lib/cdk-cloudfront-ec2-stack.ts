@@ -16,7 +16,6 @@ interface CdkStackProps extends StackProps {
   SettingBehaviors: Record<string, any>[];
   WhiteListIpSetArn: string;
   ManagedRules: string[];
-  LogEnabled: boolean;
   LogBucket: string;
   LogFilePrefix: string;
   Description: string;
@@ -39,7 +38,6 @@ export class CdkCloudFrontEc2Stack extends Stack {
       SettingBehaviors,
       WhiteListIpSetArn,
       ManagedRules,
-      LogEnabled,
       LogBucket,
       LogFilePrefix,
       Description,
@@ -98,15 +96,26 @@ export class CdkCloudFrontEc2Stack extends Stack {
     });
 
     // ✅ WAF ログ設定（CloudWatch Logs に出力）
-    if(LogEnabled){
-      new wafv2.CfnLoggingConfiguration(this, 'WafLoggingConfig', {
-        logDestinationConfigs: [(new logs.LogGroup(this, 'WafLogGroup', {
-          logGroupName: `aws-waf-logs-${ResourceName}`,
-          removalPolicy: RemovalPolicy.RETAIN, // ログの保持設定（削除しない）
-        })).logGroupArn], // ✅ CloudWatch Logs を設定
-        resourceArn: webAcl.attrArn,
+    const wafLogGroupName = `aws-waf-logs-${ResourceName}`;
+    let wafLogGroup: logs.ILogGroup;
+    try {
+      // ✅ 既存の LogGroup を参照
+      wafLogGroup = logs.LogGroup.fromLogGroupName(this, 'ExistingWafLogGroup', wafLogGroupName);
+      console.log(`✅ 既存の WAF LogGroup を利用: ${wafLogGroupName}`);
+    } catch {
+      // ✅ 存在しない場合は新規作成
+      wafLogGroup = new logs.LogGroup(this, 'WafLogGroup', {
+        logGroupName: wafLogGroupName,
+        removalPolicy: RemovalPolicy.RETAIN, // ✅ ログを保持
       });
+      console.log(`✅ 新しい WAF LogGroup を作成: ${wafLogGroupName}`);
     }
+
+    // ✅ WAF のロギング設定
+    new wafv2.CfnLoggingConfiguration(this, 'WafLoggingConfig', {
+      logDestinationConfigs: [wafLogGroup.logGroupArn], // ✅ CloudWatch Logs を設定
+      resourceArn: webAcl.attrArn,
+    });
     
     // ✅ CloudFrontのカスタムキャッシュポリシーを作成
     const customCachePolicy = new cloudfront.CachePolicy(this, 'CustomCachePolicy', {
@@ -139,7 +148,22 @@ export class CdkCloudFrontEc2Stack extends Stack {
         }
       ]))
     );
-    
+
+    // ✅ S3 バケット名を定義
+    let logBucket: s3.IBucket;
+    try {
+      // ✅ 既存の S3 バケットを参照
+      logBucket = s3.Bucket.fromBucketName(this, 'ExistingLogBucket', LogBucket);
+    } catch {
+      // ✅ 存在しない場合は新規作成
+      logBucket = new s3.Bucket(this, 'LogBucket', {
+        bucketName: LogBucket,
+        removalPolicy: RemovalPolicy.RETAIN, // ✅ バケットを削除しない
+        autoDeleteObjects: false, // ✅ S3 バケットのオブジェクトも保持
+        accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE, // ✅ CloudFront のログ書き込みを許可
+      });
+    }
+
     // ✅ CloudFrontディストリビューションの作成
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
@@ -171,8 +195,8 @@ export class CdkCloudFrontEc2Stack extends Stack {
       ...(CertificateArn &&
           { certificate: certificatemanager.Certificate.fromCertificateArn(this, 'Certificate', CertificateArn) } ),
       // ログ保存用のS3バケットを指定
-      ...(LogEnabled &&
-        { logBucket: s3.Bucket.fromBucketName(this, 'LogBucket', LogBucket), LogFilePrefix }),
+      logBucket,
+      logFilePrefix: LogFilePrefix,
     });
 
     // 出力 - デプロイ後に参照できる情報
