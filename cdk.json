@@ -17,6 +17,60 @@
     ]
   },
   "context": {
+    "production": {
+      "ResourceName": "DessertChouxComProduction",
+      "AlternateDomainNames": ["www.dessert-choux.com"],
+      "CertificateArn": "arn:aws:acm:us-east-1:045294648983:certificate/bdcd63c8-e310-458f-846f-a26aca86458a",
+      "OriginDomain": "ec2-52-196-147-154.ap-northeast-1.compute.amazonaws.com",
+      "SettingBehaviors":[
+        {
+          "pathPattern": "/test"
+        }
+      ],
+      "WhiteListIpSetArn": "arn:aws:wafv2:us-east-1:045294648983:global/ipset/WhiteList/70f40fe4-ddc4-4342-bc91-64fe6a1d9edd",
+      "ManagedRules" : [
+        "AWSManagedRulesAdminProtectionRuleSet",
+        "AWSManagedRulesAmazonIpReputationList",
+        "AWSManagedRulesAnonymousIpList",
+        "AWSManagedRulesCommonRuleSet",
+        "AWSManagedRulesKnownBadInputsRuleSet",
+        "AWSManagedRulesLinuxRuleSet",
+        "AWSManagedRulesPHPRuleSet",
+        "AWSManagedRulesUnixRuleSet",
+        "AWSManagedRulesSQLiRuleSet"
+      ],
+      "LogEnabled": true,
+      "LogBucket": "cloudfront-muginoho-log",
+      "LogFilePrefix": "dessert-choux.com",
+      "Description": "本番環境 www.dessert-choux.com"
+    },
+    "staging": {
+      "ResourceName": "DessertChouxComStaging",
+      "AlternateDomainNames": ["staging.dessert-choux.com"],
+      "CertificateArn": "arn:aws:acm:us-east-1:045294648983:certificate/c645630f-e071-40ce-bddc-dc1bd0a590fe",
+      "OriginDomain": "ec2-54-248-177-246.ap-northeast-1.compute.amazonaws.com",
+      "SettingBehaviors":[
+        {
+          "pathPattern": "/test"
+        }
+      ],
+      "WhiteListIpSetArn": "arn:aws:wafv2:us-east-1:045294648983:global/ipset/WhiteList/70f40fe4-ddc4-4342-bc91-64fe6a1d9edd",
+      "ManagedRules" : [
+        "AWSManagedRulesAdminProtectionRuleSet",
+        "AWSManagedRulesAmazonIpReputationList",
+        "AWSManagedRulesAnonymousIpList",
+        "AWSManagedRulesCommonRuleSet",
+        "AWSManagedRulesKnownBadInputsRuleSet",
+        "AWSManagedRulesLinuxRuleSet",
+        "AWSManagedRulesPHPRuleSet",
+        "AWSManagedRulesUnixRuleSet",
+        "AWSManagedRulesSQLiRuleSet"
+      ],
+      "LogEnabled": true,
+      "LogBucket": "cloudfront-muginoho-log",
+      "LogFilePrefix": "staging.dessert-choux.com",
+      "Description": "開発環境 staging.dessert-choux.com"
+    },
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": [

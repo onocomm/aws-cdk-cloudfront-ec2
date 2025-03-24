@@ -1,4 +1,4 @@
-import { Stack, StackProps, CfnOutput, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, CfnOutput, RemovalPolicy, Duration } from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
@@ -10,11 +10,16 @@ import { Construct } from 'constructs';
 // カスタムプロパティの型を定義
 interface CdkStackProps extends StackProps {
   ResourceName: string;
-  alternateDomainNames: string[];
-  certificateArn: string;
+  AlternateDomainNames: string[];
+  CertificateArn: string;
   OriginDomain: string;
-  whiteListIpSetArn: string;
-  logEnabled: boolean;
+  SettingBehaviors: Record<string, any>[];
+  WhiteListIpSetArn: string;
+  ManagedRules: string[];
+  LogEnabled: boolean;
+  LogBucket: string;
+  LogFilePrefix: string;
+  Description: string;
 }
 
 export class CdkCloudFrontEc2Stack extends Stack {
@@ -28,12 +33,35 @@ export class CdkCloudFrontEc2Stack extends Stack {
     
     const {
       ResourceName,
-      alternateDomainNames,
-      certificateArn,
+      AlternateDomainNames,
+      CertificateArn,
       OriginDomain,
-      whiteListIpSetArn,
-      logEnabled,
+      SettingBehaviors,
+      WhiteListIpSetArn,
+      ManagedRules,
+      LogEnabled,
+      LogBucket,
+      LogFilePrefix,
+      Description,
     } = props as CdkStackProps;
+
+    // ✅ AWS マネージドルールの設定
+    const rules = ManagedRules.map((ruleName, index) => ({
+      name: ruleName,
+      priority: index + 1,
+      statement: {
+        managedRuleGroupStatement: {
+          name: ruleName,
+          vendorName: 'AWS',
+        },
+      },
+      overrideAction: { none: {} },
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: `${ruleName}-Metrics`,
+        sampledRequestsEnabled: true,
+      },
+    }));
 
     // ✅ CloudFront 用 WAF WebACL を作成
     const webAcl = new wafv2.CfnWebACL(this, 'WebACL', {
@@ -47,14 +75,14 @@ export class CdkCloudFrontEc2Stack extends Stack {
       },
       rules: [
         // ✅ ホワイトリスト (IPSet)
-        ...(whiteListIpSetArn
+        ...(WhiteListIpSetArn
           ? [{
               name: 'WhiteList',
               priority: 0,
               action: { allow: {} },
               statement: {
                 ipSetReferenceStatement: {
-                  arn: whiteListIpSetArn,
+                  arn: WhiteListIpSetArn,
                 },
               },
               visibilityConfig: {
@@ -65,155 +93,12 @@ export class CdkCloudFrontEc2Stack extends Stack {
             }]
           : []),
         // ✅ AWS マネージドルール
-        {
-          name: 'AWSManagedRulesAdminProtectionRuleSet',
-          priority: 1,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesAdminProtectionRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'AdminProtectionRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesAmazonIpReputationList',
-          priority: 2,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesAmazonIpReputationList',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'AmazonIpReputationList-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesAnonymousIpList',
-          priority: 3,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesAnonymousIpList',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'AnonymousIpList-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesCommonRuleSet',
-          priority: 4,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesCommonRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'CommonRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesKnownBadInputsRuleSet',
-          priority: 5,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesKnownBadInputsRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'KnownBadInputsRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesLinuxRuleSet',
-          priority: 6,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesLinuxRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'LinuxRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesPHPRuleSet',
-          priority: 7,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesPHPRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'PHPRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesUnixRuleSet',
-          priority: 8,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesUnixRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'UnixRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
-        {
-          name: 'AWSManagedRulesSQLiRuleSet',
-          priority: 9,
-          statement: {
-            managedRuleGroupStatement: {
-              name: 'AWSManagedRulesSQLiRuleSet',
-              vendorName: 'AWS',
-            },
-          },
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: 'SQLiRuleSet-Metrics',
-            sampledRequestsEnabled: true,
-          },
-        },
+        ...rules,
       ],
     });
 
     // ✅ WAF ログ設定（CloudWatch Logs に出力）
-    if(logEnabled){
+    if(LogEnabled){
       new wafv2.CfnLoggingConfiguration(this, 'WafLoggingConfig', {
         logDestinationConfigs: [(new logs.LogGroup(this, 'WafLogGroup', {
           logGroupName: `aws-waf-logs-${ResourceName}`,
@@ -223,7 +108,39 @@ export class CdkCloudFrontEc2Stack extends Stack {
       });
     }
     
-    // CloudFrontディストリビューションの作成
+    // ✅ CloudFrontのカスタムキャッシュポリシーを作成
+    const customCachePolicy = new cloudfront.CachePolicy(this, 'CustomCachePolicy', {
+      cachePolicyName: `${ResourceName}CachePolicy`,
+      defaultTtl: Duration.minutes(5),  // デフォルトTTL 5分
+      minTtl: Duration.seconds(1),    // 最小TTL 1秒
+      maxTtl: Duration.days(365),       // 最大TTL 365日
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(), // Cookieなし
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(), //ヘッダーなし
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(), // すべてのクエリストリングをキャッシュキーに含める
+      enableAcceptEncodingBrotli: true, // Brotli圧縮を有効化
+      enableAcceptEncodingGzip: true,   // Gzip圧縮を有効化
+    });
+
+    // ✅ ビヘイビアの設定
+    const behaviors = Object.fromEntries(
+      SettingBehaviors.map((item) => ([
+        item.pathPattern,
+        {
+          origin: new origins.HttpOrigin(item.originDomain, { // item.originDomain を使用
+            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY, // HTTP経由でオリジンと通信
+            originShieldEnabled: true,
+            originShieldRegion: 'ap-northeast-1',
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS, // HTTPリクエストをHTTPSにリダイレクト
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
+          cachePolicy: customCachePolicy, // キャッシュポリシー
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022, // すべてのヘッダーをオリジンにリレー
+          responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT, // ✅ CORS設定
+        }
+      ]))
+    );
+    
+    // ✅ CloudFrontディストリビューションの作成
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: new origins.HttpOrigin(OriginDomain, {
@@ -233,32 +150,29 @@ export class CdkCloudFrontEc2Stack extends Stack {
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS, // ビューワーからのHTTPリクエストをHTTPSにリダイレクト
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED, // キャッシュ最適化のためのポリシー
+        cachePolicy: customCachePolicy, // キャッシュ最適化のためのポリシー
         originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022, // ビューワーからのすべてのヘッダーをオリジンにリレー
         responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT, // ✅ SimpleCORS を設定
       },
+      ...(behaviors.length > 0 &&
+        { additionalBehaviors: behaviors } ),
       // WAFをアタッチ
       webAclId: webAcl.attrArn,
       // 他の設定
-      comment: `CloudFront distribution for ${ResourceName}`,
+      comment: Description,
       // 料金クラス（北米、欧州のみ）
       priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
       // 有効
       enabled: true,
       // 代替ドメイン名（CNAME）を指定
-      ...(alternateDomainNames?.[0] &&
-        { domainNames: alternateDomainNames }),
+      ...(AlternateDomainNames?.[0] &&
+        { domainNames: AlternateDomainNames }),
       // ACM証明書を指定
-      ...(certificateArn &&
-          { certificate: certificatemanager.Certificate.fromCertificateArn(this, 'Certificate', certificateArn) } ),
+      ...(CertificateArn &&
+          { certificate: certificatemanager.Certificate.fromCertificateArn(this, 'Certificate', CertificateArn) } ),
       // ログ保存用のS3バケットを指定
-      ...(logEnabled &&
-          { logBucket:  new s3.Bucket(this, 'CloudFrontLogBucket', {
-              bucketName: `${ResourceName.toLowerCase()}-cloudfront-log`,
-              removalPolicy: RemovalPolicy.RETAIN, // ログの保持
-              accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE, // CloudFront からのログ書き込み許可
-            }
-          )}),
+      ...(LogEnabled &&
+        { logBucket: s3.Bucket.fromBucketName(this, 'LogBucket', LogBucket), LogFilePrefix }),
     });
 
     // 出力 - デプロイ後に参照できる情報
