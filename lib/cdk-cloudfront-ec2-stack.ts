@@ -123,16 +123,18 @@ export class CdkCloudFrontEc2Stack extends Stack {
       enableAcceptEncodingGzip: true,   // Gzip圧縮を有効化
     });
 
+    const origin = new origins.HttpOrigin(OriginDomain, { // item.originDomain を使用
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY, // HTTP経由でオリジンと通信
+      originShieldEnabled: true,
+      originShieldRegion: 'ap-northeast-1',
+    });
+
     // ✅ ビヘイビアの設定
     const behaviors = Object.fromEntries(
       SettingBehaviors.map((item) => ([
         item.pathPattern,
         {
-          origin: new origins.HttpOrigin(item.originDomain, { // item.originDomain を使用
-            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY, // HTTP経由でオリジンと通信
-            originShieldEnabled: true,
-            originShieldRegion: 'ap-northeast-1',
-          }),
+          origin,
           viewerProtocolPolicy: CertificateArn ? cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS : cloudfront.ViewerProtocolPolicy.ALLOW_ALL, // HTTPリクエストをHTTPSにリダイレクト
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
           cachePolicy: item.pathPattern ? customCachePolicy : cloudfront.CachePolicy.CACHING_DISABLED, // キャッシュポリシー
@@ -141,6 +143,8 @@ export class CdkCloudFrontEc2Stack extends Stack {
         }
       ]))
     );
+
+    console.log(behaviors)
 
     // ✅ S3 バケット名を定義
     const logBucket = new s3.Bucket(this, 'LogBucket', {
@@ -153,19 +157,15 @@ export class CdkCloudFrontEc2Stack extends Stack {
     // ✅ CloudFrontディストリビューションの作成
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
-        origin: new origins.HttpOrigin(OriginDomain, {
-          protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY, // HTTP経由でオリジンと通信
-          originShieldEnabled: true,
-          originShieldRegion: 'ap-northeast-1',
-        }),
+        origin,
         viewerProtocolPolicy: CertificateArn ? cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS : cloudfront.ViewerProtocolPolicy.ALLOW_ALL, // HTTPリクエストをHTTPSにリダイレクト
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL, // ✅ GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE を許可
         cachePolicy: customCachePolicy, // キャッシュ最適化のためのポリシー
         originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022, // ビューワーからのすべてのヘッダーをオリジンにリレー
         responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT, // ✅ SimpleCORS を設定
       },
-      ...(SettingBehaviors.length > 0 &&
-        { additionalBehaviors: behaviors } ),
+      ...(SettingBehaviors.length &&
+        { additionalBehaviors: behaviors }),
       // WAFをアタッチ
       webAclId: webAcl.attrArn,
       // 他の設定
