@@ -144,8 +144,6 @@ export class CdkCloudFrontEc2Stack extends Stack {
       ]))
     );
 
-    console.log(behaviors)
-
     // ✅ S3 バケット名を定義
     const logBucket = new s3.Bucket(this, 'LogBucket', {
       bucketName: LogBucket,
